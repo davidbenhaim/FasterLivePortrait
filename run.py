@@ -89,8 +89,13 @@ def run_with_video(args):
             break
         t0 = time.time()
         first_frame = frame_ind == 0
-        dri_crop, out_crop, out_org, dri_motion_info = pipe.run(frame, pipe.src_imgs[0], pipe.src_infos[0],
-                                                                first_frame=first_frame)
+        dri_crop, out_crop, out_org, dri_motion_info = pipe.run(
+            frame,
+            pipe.src_imgs[0],
+            pipe.src_infos[0],
+            first_frame=first_frame,
+            realtime=args.realtime,
+        )
         frame_ind += 1
         if out_crop is None:
             print(f"no face in driving frame:{frame_ind}")
@@ -110,12 +115,8 @@ def run_with_video(args):
             out_org = cv2.cvtColor(out_org, cv2.COLOR_RGB2BGR)
             vout_org.write(out_org)
         else:
-            if infer_cfg.infer_params.flag_pasteback:
-                out_org = cv2.cvtColor(out_org, cv2.COLOR_RGB2BGR)
-                cv2.imshow('Render', out_org)
-            else:
-                # image show in realtime mode
-                cv2.imshow('Render', out_crop)
+            # For realtime mode, show the fast crop-only render.
+            cv2.imshow('Render', out_crop)
             # 按下'q'键退出循环
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -203,8 +204,13 @@ def run_with_pkl(args):
         t0 = time.time()
         first_frame = frame_ind == 0
         dri_motion_info_ = [motion_lst[frame_ind], c_eyes_lst[frame_ind], c_lip_lst[frame_ind]]
-        out_crop, out_org = pipe.run_with_pkl(dri_motion_info_, pipe.src_imgs[0], pipe.src_infos[0],
-                                              first_frame=first_frame)
+        out_crop, out_org = pipe.run_with_pkl(
+            dri_motion_info_,
+            pipe.src_imgs[0],
+            pipe.src_infos[0],
+            first_frame=first_frame,
+            realtime=args.realtime,
+        )
         if out_crop is None:
             print(f"no face in driving frame:{frame_ind}")
             continue
@@ -217,12 +223,11 @@ def run_with_pkl(args):
             out_org = cv2.cvtColor(out_org, cv2.COLOR_RGB2BGR)
             vout_org.write(out_org)
         else:
-            if infer_cfg.infer_params.flag_pasteback:
-                out_org = cv2.cvtColor(out_org, cv2.COLOR_RGB2BGR)
-                cv2.imshow('Render,  Q > exit,  S > Stitching,  Z > RelativeMotion,  X > AnimationRegion,  C > CropDrivingVideo, KL > AdjustSourceScale, NM > AdjustDriverScale,  Space > Webcamassource,  R > SwitchRealtimeWebcamUpdate',out_org)
-            else:
-                # image show in realtime mode
-                cv2.imshow('Render,  Q > exit,  S > Stitching,  Z > RelativeMotion,  X > AnimationRegion,  C > CropDrivingVideo, KL > AdjustSourceScale, NM > AdjustDriverScale,  Space > Webcamassource,  R > SwitchRealtimeWebcamUpdate', out_crop)
+            # For realtime mode, show the fast crop-only render.
+            cv2.imshow(
+                'Render,  Q > exit,  S > Stitching,  Z > RelativeMotion,  X > AnimationRegion,  C > CropDrivingVideo, KL > AdjustSourceScale, NM > AdjustDriverScale,  Space > Webcamassource,  R > SwitchRealtimeWebcamUpdate',
+                out_crop,
+            )
             # Press the 'q' key to exit the loop, r to switch realtime src_webcam update, spacebar to switch sourceisWebcam
             k = cv2.waitKey(1) & 0xFF
             if k == ord('q'):

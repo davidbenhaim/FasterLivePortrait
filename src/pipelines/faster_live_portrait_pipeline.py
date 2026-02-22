@@ -310,6 +310,8 @@ class FasterLivePortraitPipeline:
              I_p_pstbk, **kwargs):
         out_crop, out_org = None, None
         eye_delta_before_animation = None
+        return_details = kwargs.get("return_details", False)
+        details = []
         for j in range(len(src_info)):
             if self.is_source_video:
                 x_s_info, source_lmk, R_s, f_s, x_s, x_c_s, lip_delta_before_animation, flag_lip_zero, mask_ori_float, M = \
@@ -472,18 +474,30 @@ class FasterLivePortraitPipeline:
                     x_d_i_new = self.stitching(x_s, x_d_i_new)
 
             x_d_i_new = x_s + (x_d_i_new - x_s) * self.cfg.infer_params.driving_multiplier
+            if return_details:
+                details.append({
+                    "x_d_i_new": x_d_i_new.copy(),
+                    "x_s": x_s.copy(),
+                    "f_s": f_s.copy() if hasattr(f_s, "copy") else f_s,
+                    "M_c2o": M.detach().cpu().numpy() if isinstance(M, torch.Tensor) else M,
+                })
             out_crop = self.model_dict["warping_spade"].predict(f_s, x_s, x_d_i_new)
             if not realtime and self.cfg.infer_params.flag_pasteback and self.cfg.infer_params.flag_do_crop and self.cfg.infer_params.flag_stitching:
                 # TODO: pasteback is slow, considering optimize it using multi-threading or GPU
                 # I_p_pstbk = paste_back(out_crop, crop_info['M_c2o'], I_p_pstbk, mask_ori_float)
                 I_p_pstbk = paste_back_pytorch(out_crop, M, I_p_pstbk, mask_ori_float)
-        return out_crop.to(dtype=torch.uint8).cpu().numpy(), I_p_pstbk.to(dtype=torch.uint8).cpu().numpy()
+        out_crop_np = out_crop.to(dtype=torch.uint8).cpu().numpy()
+        out_org_np = I_p_pstbk.to(dtype=torch.uint8).cpu().numpy()
+        if return_details:
+            return out_crop_np, out_org_np, details
+        return out_crop_np, out_org_np
 
     def run(self, image, img_src, src_info, **kwargs):
         img_bgr = image
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         I_p_pstbk = torch.from_numpy(img_src).to(self.device).float()
         realtime = kwargs.get("realtime", False)
+        return_details = kwargs.get("return_details", False)
         if self.cfg.infer_params.flag_crop_driving_video:
             if self.src_lmk_pre is None:
                 src_face = self.model_dict["face_analysis"].predict(img_bgr)
@@ -561,14 +575,18 @@ class FasterLivePortraitPipeline:
             self.exp_smooth = utils.OneEuroFilter(4, 0.3)
         R_d_0 = self.R_d_0.copy()
         x_d_0_info = copy.deepcopy(self.x_d_0_info)
-        out_crop, I_p_pstbk = self._run(src_info, x_d_i_info, x_d_0_info, R_d_i, R_d_0, realtime, input_eye_ratio,
-                                        input_lip_ratio,
-                                        I_p_pstbk, **kwargs)
+        out = self._run(src_info, x_d_i_info, x_d_0_info, R_d_i, R_d_0, realtime, input_eye_ratio,
+                        input_lip_ratio, I_p_pstbk, **kwargs)
+        if return_details:
+            out_crop, I_p_pstbk, details = out
+            return img_crop, out_crop, I_p_pstbk, dri_motion_info, details
+        out_crop, I_p_pstbk = out
         return img_crop, out_crop, I_p_pstbk, dri_motion_info
 
     def run_with_pkl(self, dri_motion_info, img_src, src_info, **kwargs):
         I_p_pstbk = torch.from_numpy(img_src).to(self.device).float()
         realtime = kwargs.get("realtime", False)
+        return_details = kwargs.get("return_details", False)
 
         input_eye_ratio = dri_motion_info[1]
         input_lip_ratio = dri_motion_info[2]
@@ -584,8 +602,12 @@ class FasterLivePortraitPipeline:
             self.exp_smooth = utils.OneEuroFilter(4, 0.3)
         R_d_0 = self.R_d_0.copy()
         x_d_0_info = copy.deepcopy(self.x_d_0_info)
-        out_crop, I_p_pstbk = self._run(src_info, x_d_i_info, x_d_0_info, R_d_i, R_d_0, realtime, input_eye_ratio,
-                                        input_lip_ratio, I_p_pstbk, **kwargs)
+        out = self._run(src_info, x_d_i_info, x_d_0_info, R_d_i, R_d_0, realtime, input_eye_ratio,
+                        input_lip_ratio, I_p_pstbk, **kwargs)
+        if return_details:
+            out_crop, I_p_pstbk, details = out
+            return out_crop, I_p_pstbk, details
+        out_crop, I_p_pstbk = out
         return out_crop, I_p_pstbk
 
     def __del__(self):
